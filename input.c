@@ -29,6 +29,21 @@
 #include "error.h"
 #include "qmp-commands.h"
 
+#define CONFIG_KVM_VDI  /* FIXME */
+#ifdef CONFIG_KVM_VDI
+#include "kvm.h"
+#include <linux/kvm.h>     
+/* FIXME: below has to be moved somewhere */
+#define KVM_UI_INFO               _IOW(KVMIO,  0xef, __u32)
+enum {
+        kvm_kbd_pressed,
+        kvm_kbd_released,
+        kvm_mouse_pressed,
+        kvm_mouse_released,
+};
+#define kvm_ui_event(type, info)        (uint32_t)((type & 0xff) | ((info & 0xff) << 8))
+#endif
+
 static QEMUPutKBDEvent *qemu_put_kbd_event;
 static void *qemu_put_kbd_event_opaque;
 static QTAILQ_HEAD(, QEMUPutLEDEntry) led_handlers = QTAILQ_HEAD_INITIALIZER(led_handlers);
@@ -132,6 +147,13 @@ void kbd_put_keycode(int keycode)
 {
     if (qemu_put_kbd_event) {
         qemu_put_kbd_event(qemu_put_kbd_event_opaque, keycode);
+#ifdef CONFIG_KVM_VDI
+        /* TODO: should be formalized, since following conditions are experimental */
+        if (keycode < 0x80)
+                kvm_vm_ioctl(kvm_state, KVM_UI_INFO, kvm_ui_event(kvm_kbd_pressed, keycode));
+        else if (keycode < 0xe0)
+                kvm_vm_ioctl(kvm_state, KVM_UI_INFO, kvm_ui_event(kvm_kbd_released, keycode));
+#endif
     }
 }
 
@@ -150,6 +172,9 @@ void kbd_mouse_event(int dx, int dy, int dz, int buttons_state)
     QEMUPutMouseEvent *mouse_event;
     void *mouse_event_opaque;
     int width, height;
+#ifdef CONFIG_KVM_VDI
+    static int prev_buttons_state;
+#endif
 
     if (QTAILQ_EMPTY(&mouse_handlers)) {
         return;
@@ -187,6 +212,13 @@ void kbd_mouse_event(int dx, int dy, int dz, int buttons_state)
                         dy, height - dx, dz, buttons_state);
             break;
         }
+#ifdef CONFIG_KVM_VDI
+        if (prev_buttons_state == 0 && buttons_state > 0) 
+                kvm_vm_ioctl(kvm_state, KVM_UI_INFO, kvm_ui_event(kvm_mouse_pressed, buttons_state));
+        else if (prev_buttons_state > 0 && buttons_state == 0)
+                kvm_vm_ioctl(kvm_state, KVM_UI_INFO, kvm_ui_event(kvm_mouse_released, buttons_state));
+        prev_buttons_state = buttons_state;
+#endif
     }
 }
 

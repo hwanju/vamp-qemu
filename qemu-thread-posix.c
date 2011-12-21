@@ -32,6 +32,7 @@ void qemu_mutex_init(QemuMutex *mutex)
 
     pthread_mutexattr_init(&mutexattr);
     pthread_mutexattr_settype(&mutexattr, PTHREAD_MUTEX_ERRORCHECK);
+    //pthread_mutexattr_setprotocol(&mutexattr, PTHREAD_PRIO_INHERIT);    /* CONFIG_KVM_VDI: hwandori-experimental */
     err = pthread_mutex_init(&mutex->lock, &mutexattr);
     pthread_mutexattr_destroy(&mutexattr);
     if (err)
